@@ -41,6 +41,7 @@ export class BybitConnector {
   // Convert timeframe to milliseconds
   private getTimeframeMs(timeframe: Timeframe): number {
     const intervals = {
+      '1m': 1 * 60 * 1000,
       '5m': 5 * 60 * 1000,
       '15m': 15 * 60 * 1000,
       '30m': 30 * 60 * 1000,
@@ -57,6 +58,7 @@ export class BybitConnector {
   // Convert timeframe to Bybit interval format
   private getBybitInterval(timeframe: Timeframe): string {
     const intervals = {
+      '1m': '1',
       '5m': '5',
       '15m': '15',
       '30m': '30',

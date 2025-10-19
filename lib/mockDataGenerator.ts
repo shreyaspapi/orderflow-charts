@@ -85,6 +85,7 @@ export class MockDataGenerator {
   // Get time interval in milliseconds for each timeframe
   private getTimeframeMs(timeframe: Timeframe): number {
     const intervals = {
+      '1m': 1 * 60 * 1000,
       '5m': 5 * 60 * 1000,
       '15m': 15 * 60 * 1000,
       '30m': 30 * 60 * 1000,

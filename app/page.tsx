@@ -9,7 +9,7 @@ import { BybitConnector } from '@/lib/bybitConnector';
 import { OrderFlowCandle, Timeframe } from '@/lib/types';
 
 export default function Home() {
-  const [timeframe, setTimeframe] = useState<Timeframe>('15m');
+  const [timeframe, setTimeframe] = useState<Timeframe>('1m');
   const [data, setData] = useState<OrderFlowCandle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLiveData, setIsLiveData] = useState(true); // Toggle between live and mock data
@@ -228,11 +228,11 @@ export default function Home() {
             </div>
             <div className="flex items-center gap-4 text-xs">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-500 rounded"></div>
+                <div className="w-2 h-2 bg-red-500 rounded"></div>
                 <span className="text-gray-400">Bid</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-red-500 rounded"></div>
+                <div className="w-2 h-2 bg-green-500 rounded"></div>
                 <span className="text-gray-400">Ask</span>
               </div>
             </div>

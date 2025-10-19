@@ -431,28 +431,28 @@ function createFootprintOverlay(
 
         const imbalance = isImbalance(level.bidVol, level.askVol);
 
-        // Draw bid volume (left side)
+        // Draw bid volume (left side) - RED
         ctx.textAlign = 'right';
         ctx.font = `${fontSize}px monospace`;
 
         if (imbalance === 'bid') {
-          ctx.fillStyle = 'rgba(34, 197, 94, 0.8)';
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.8)';
           ctx.fillRect(x - candleWidth * 0.4, y - rowHeight / 2, candleWidth * 0.38, rowHeight);
         }
 
-        ctx.fillStyle = imbalance === 'bid' ? '#000' : 'rgba(34, 197, 94, 1)';
+        ctx.fillStyle = imbalance === 'bid' ? '#000' : 'rgba(239, 68, 68, 1)';
         const bidText = formatVolume(level.bidVol);
         ctx.fillText(bidText, x - candleWidth * 0.02, y + fontSize / 3);
 
-        // Draw ask volume (right side)
+        // Draw ask volume (right side) - GREEN
         ctx.textAlign = 'left';
 
         if (imbalance === 'ask') {
-          ctx.fillStyle = 'rgba(239, 68, 68, 0.8)';
+          ctx.fillStyle = 'rgba(34, 197, 94, 0.8)';
           ctx.fillRect(x + candleWidth * 0.02, y - rowHeight / 2, candleWidth * 0.38, rowHeight);
         }
 
-        ctx.fillStyle = imbalance === 'ask' ? '#000' : 'rgba(239, 68, 68, 1)';
+        ctx.fillStyle = imbalance === 'ask' ? '#000' : 'rgba(34, 197, 94, 1)';
         const askText = formatVolume(level.askVol);
         ctx.fillText(askText, x + candleWidth * 0.02, y + fontSize / 3);
 
