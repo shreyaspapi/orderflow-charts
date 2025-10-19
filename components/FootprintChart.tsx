@@ -121,10 +121,32 @@ export default function FootprintChart({
           level.price >= candle.low && level.price <= candle.high
         );
         
-        // Sample levels if there are too many
-        const levelsToShow = relevantLevels.length > maxLevels
-          ? relevantLevels.filter((_, idx) => idx % Math.ceil(relevantLevels.length / maxLevels) === 0)
-          : relevantLevels;
+        // Aggregate levels when we have more data than can fit
+        let levelsToShow;
+        if (relevantLevels.length > maxLevels && maxLevels > 0) {
+          levelsToShow = [];
+          const bucketSize = Math.ceil(relevantLevels.length / maxLevels);
+          
+          for (let i = 0; i < relevantLevels.length; i += bucketSize) {
+            const bucket = relevantLevels.slice(i, i + bucketSize);
+            
+            // Aggregate volumes from all levels in this bucket
+            const aggregatedBidVol = bucket.reduce((sum, level) => sum + level.bidVol, 0);
+            const aggregatedAskVol = bucket.reduce((sum, level) => sum + level.askVol, 0);
+            
+            // Use the middle price of the bucket
+            const middleIndex = Math.floor(bucket.length / 2);
+            const representativePrice = bucket[middleIndex].price;
+            
+            levelsToShow.push({
+              price: representativePrice,
+              bidVol: aggregatedBidVol,
+              askVol: aggregatedAskVol
+            });
+          }
+        } else {
+          levelsToShow = relevantLevels;
+        }
         
         levelsToShow.forEach(level => {
           const levelY = priceToY(level.price);

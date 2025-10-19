@@ -1,9 +1,13 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { createChart, ColorType } from 'lightweight-charts';
-import type { IChartApi, ISeriesApi, CandlestickData, Time, CandlestickSeriesOptions } from 'lightweight-charts';
+import type { IChartApi, ISeriesApi, CandlestickData, Time } from 'lightweight-charts';
 import { OrderFlowCandle } from '@/lib/types';
+
+interface ExtendedChartApi extends IChartApi {
+  addCandlestickSeries(options?: unknown): ISeriesApi<'Candlestick'>;
+}
 
 interface FootprintChartImprovedProps {
   data: OrderFlowCandle[];
@@ -23,8 +27,8 @@ export default function FootprintChartImproved({
   onVisibleRangeChange,
 }: FootprintChartImprovedProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const candleSeriesRef = useRef<any>(null);
+  const chartRef = useRef<ExtendedChartApi | null>(null);
+  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const footprintCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Initialize chart
@@ -65,13 +69,7 @@ export default function FootprintChartImproved({
       console.log('Chart created:', chart);
       console.log('Available methods:', Object.keys(chart));
 
-      if (typeof chart.addCandlestickSeries !== 'function') {
-        console.error('addCandlestickSeries is not available!');
-        console.error('Chart type:', typeof chart);
-        return;
-      }
-
-      const candleSeries = chart.addCandlestickSeries({
+      const candleSeries = (chart as ExtendedChartApi).addCandlestickSeries({
         upColor: '#22c55e',
         downColor: '#ef4444',
         borderVisible: true,
@@ -84,7 +82,7 @@ export default function FootprintChartImproved({
 
       console.log('Candle series created:', candleSeries);
 
-      chartRef.current = chart;
+      chartRef.current = chart as ExtendedChartApi;
       candleSeriesRef.current = candleSeries;
     } catch (error) {
       console.error('Error creating chart:', error);
@@ -104,7 +102,9 @@ export default function FootprintChartImproved({
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      chart.remove();
+      if (chartRef.current) {
+        chartRef.current.remove();
+      }
     };
   }, []);
 
@@ -163,7 +163,7 @@ export default function FootprintChartImproved({
     // Find visible candles
     const visibleCandles = data.filter(candle => {
       const time = new Date(candle.timestamp).getTime() / 1000;
-      return time >= visibleRange.from && time <= visibleRange.to;
+      return time >= (visibleRange.from as number) && time <= (visibleRange.to as number);
     });
 
     if (visibleCandles.length === 0) return;
@@ -190,9 +190,8 @@ export default function FootprintChartImproved({
       
       if (!x || !candleSeriesRef.current) return;
 
-      const priceScale = candleSeriesRef.current.priceScale();
-      const bodyTop = priceScale.priceToCoordinate(Math.max(candle.open, candle.close));
-      const bodyBottom = priceScale.priceToCoordinate(Math.min(candle.open, candle.close));
+      const bodyTop = candleSeriesRef.current.priceToCoordinate(Math.max(candle.open, candle.close));
+      const bodyBottom = candleSeriesRef.current.priceToCoordinate(Math.min(candle.open, candle.close));
 
       if (!bodyTop || !bodyBottom) return;
 
@@ -205,19 +204,44 @@ export default function FootprintChartImproved({
       const fontSize = Math.min(Math.max(barSpacing * 0.12, 8), 12);
       const rowHeight = fontSize + 6;
 
-      // Filter and sample price levels
+      // Filter and sort price levels
       const sortedLevels = [...candle.bidAskData]
         .filter(level => level.price >= candle.low && level.price <= candle.high)
         .sort((a, b) => b.price - a.price);
 
       const maxLevels = Math.floor(bodyHeight / rowHeight);
-      const levelsToShow = sortedLevels.length > maxLevels
-        ? sortedLevels.filter((_, i) => i % Math.ceil(sortedLevels.length / maxLevels) === 0)
-        : sortedLevels;
+      
+      // Aggregate levels when we have more data than can fit
+      let levelsToShow;
+      if (sortedLevels.length > maxLevels && maxLevels > 0) {
+        levelsToShow = [];
+        const bucketSize = Math.ceil(sortedLevels.length / maxLevels);
+        
+        for (let i = 0; i < sortedLevels.length; i += bucketSize) {
+          const bucket = sortedLevels.slice(i, i + bucketSize);
+          
+          // Aggregate volumes from all levels in this bucket
+          const aggregatedBidVol = bucket.reduce((sum, level) => sum + level.bidVol, 0);
+          const aggregatedAskVol = bucket.reduce((sum, level) => sum + level.askVol, 0);
+          
+          // Use the middle price of the bucket
+          const middleIndex = Math.floor(bucket.length / 2);
+          const representativePrice = bucket[middleIndex].price;
+          
+          levelsToShow.push({
+            price: representativePrice,
+            bidVol: aggregatedBidVol,
+            askVol: aggregatedAskVol
+          });
+        }
+      } else {
+        levelsToShow = sortedLevels;
+      }
 
       // Draw each price level
       levelsToShow.forEach(level => {
-        const y = priceScale.priceToCoordinate(level.price);
+        if (!candleSeriesRef.current) return;
+        const y = candleSeriesRef.current.priceToCoordinate(level.price);
         if (!y) return;
 
         // Skip if outside body

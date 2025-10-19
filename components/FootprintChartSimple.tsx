@@ -18,6 +18,40 @@ interface FootprintChartSimpleProps {
   ) => void;
 }
 
+interface ChartInstance {
+  chart: IChartApi;
+  candleSeries: ISeriesApi<'Candlestick'>;
+  data: OrderFlowCandle[];
+  overlayCleanup?: () => void;
+  hasInitialized?: boolean;
+}
+
+interface IChartApi {
+  chartElement(): HTMLElement;
+  timeScale(): ITimeScaleApi;
+  remove(): void;
+  applyOptions(options: unknown): void;
+  addSeries(type: unknown, options: unknown): ISeriesApi<'Candlestick'>;
+  resize(width: number, height: number): void;
+}
+
+type Time = number | string;
+
+interface ITimeScaleApi {
+  getVisibleRange(): { from: Time; to: Time } | null;
+  getVisibleLogicalRange(): { from: number; to: number } | null;
+  width(): number;
+  timeToCoordinate(time: Time): number | null;
+  subscribeVisibleLogicalRangeChange(callback: () => void): () => void;
+  fitContent(): void;
+}
+
+interface ISeriesApi<T> {
+  setData(data: unknown[]): void;
+  priceToCoordinate(price: number): number | null;
+  update(data: unknown): void;
+}
+
 export default function FootprintChartSimple({
   data,
   width,
@@ -27,7 +61,7 @@ export default function FootprintChartSimple({
   onVisibleRangeChange,
 }: FootprintChartSimpleProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartInstanceRef = useRef<any>(null);
+  const chartInstanceRef = useRef<ChartInstance | null>(null);
   const [isChartReady, setIsChartReady] = useState(false);
 
   // Create chart only once on mount
@@ -90,13 +124,13 @@ export default function FootprintChartSimple({
 
         // Store everything first (we need this ref for the overlay)
         chartInstanceRef.current = { 
-          chart, 
-          candleSeries,
+          chart: chart as unknown as IChartApi, 
+          candleSeries: candleSeries as unknown as ISeriesApi<'Candlestick'>,
           data: [] // Track current data
         };
 
         // Create footprint overlay canvas and get cleanup function (pass the ref)
-        const overlayCleanup = createFootprintOverlay(chart, candleSeries, chartInstanceRef.current, onVisibleRangeChange);
+        const overlayCleanup = createFootprintOverlay(chart as unknown as IChartApi, candleSeries as unknown as ISeriesApi<'Candlestick'>, chartInstanceRef.current, onVisibleRangeChange);
         
         // Add cleanup function to the ref
         chartInstanceRef.current.overlayCleanup = overlayCleanup;
@@ -156,7 +190,7 @@ export default function FootprintChartSimple({
     data.forEach(candle => {
       const time = Math.floor(new Date(candle.timestamp).getTime() / 1000);
       timeMap.set(time, {
-        time: time as any,
+        time: time as Time,
         open: candle.open,
         high: candle.high,
         low: candle.low,
@@ -214,10 +248,10 @@ function isImbalance(bidVol: number, askVol: number): 'bid' | 'ask' | null {
 
 // Create footprint overlay on the chart
 function createFootprintOverlay(
-  chart: any, 
-  candleSeries: any, 
-  dataRef: any, // Reference to get current data
-  onVisibleRangeChange?: (startIndex: number, endIndex: number, candleWidth: number) => void
+  chart: IChartApi, 
+  candleSeries: ISeriesApi<'Candlestick'>, 
+  dataRef: ChartInstance, // Reference to get current data
+  onVisibleRangeChange?: (startIndex: number, endIndex: number, candleWidth: number, leftOffsetPx: number) => void
 ): () => void {
   // Create overlay canvas
   const overlayCanvas = document.createElement('canvas');
@@ -267,7 +301,7 @@ function createFootprintOverlay(
     // Find visible candles
     const visibleCandles = data.filter((candle: OrderFlowCandle) => {
       const time = Math.floor(new Date(candle.timestamp).getTime() / 1000);
-      return time >= visibleRange.from && time <= visibleRange.to;
+      return time >= (visibleRange.from as number) && time <= (visibleRange.to as number);
     });
 
     if (visibleCandles.length === 0) return;
@@ -350,16 +384,40 @@ function createFootprintOverlay(
       const fontSize = Math.min(Math.max(candleWidth * 0.15, 7), 14);
       const rowHeight = Math.max(fontSize + 4, 10);
 
-      // Filter and sample price levels across the full candle range
+      // Filter and sort price levels across the full candle range
       const sortedLevels = [...candle.bidAskData]
         .filter(level => level.price >= candle.low && level.price <= candle.high)
         .sort((a, b) => b.price - a.price);
 
       // Calculate how many levels can fit in the full candle height
       const maxLevels = Math.floor(fullCandleHeight / rowHeight);
-      const levelsToShow = sortedLevels.length > maxLevels
-        ? sortedLevels.filter((_, i) => i % Math.ceil(sortedLevels.length / maxLevels) === 0)
-        : sortedLevels;
+      
+      // Aggregate levels when we have more data than can fit
+      let levelsToShow;
+      if (sortedLevels.length > maxLevels && maxLevels > 0) {
+        levelsToShow = [];
+        const bucketSize = Math.ceil(sortedLevels.length / maxLevels);
+        
+        for (let i = 0; i < sortedLevels.length; i += bucketSize) {
+          const bucket = sortedLevels.slice(i, i + bucketSize);
+          
+          // Aggregate volumes from all levels in this bucket
+          const aggregatedBidVol = bucket.reduce((sum, level) => sum + level.bidVol, 0);
+          const aggregatedAskVol = bucket.reduce((sum, level) => sum + level.askVol, 0);
+          
+          // Use the middle price of the bucket
+          const middleIndex = Math.floor(bucket.length / 2);
+          const representativePrice = bucket[middleIndex].price;
+          
+          levelsToShow.push({
+            price: representativePrice,
+            bidVol: aggregatedBidVol,
+            askVol: aggregatedAskVol
+          });
+        }
+      } else {
+        levelsToShow = sortedLevels;
+      }
 
       // Draw each price level
       console.log('Drawing', levelsToShow.length, 'levels for candle at x:', x, 'candle width:', candleWidth);

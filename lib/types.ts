@@ -1,5 +1,12 @@
 // Order Flow Data Types
 
+export interface Trade {
+  timestamp: number;
+  price: number;
+  volume: number;
+  side: 'buy' | 'sell';
+}
+
 export interface BidAskLevel {
   price: number;
   bidVol: number;

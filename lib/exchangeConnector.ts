@@ -1,4 +1,4 @@
-import { OrderFlowCandle, Timeframe } from './types';
+import { OrderFlowCandle, Timeframe, Trade } from './types';
 
 /**
  * Exchange Connector (Template for Future Implementation)
@@ -75,7 +75,7 @@ export class ExchangeConnector {
    * TODO: Implement trade aggregation logic
    */
   private aggregateTradesToCandle(
-    trades: any[],
+    trades: Trade[],
     timeframe: Timeframe
   ): OrderFlowCandle {
     // Placeholder for trade aggregation logic
