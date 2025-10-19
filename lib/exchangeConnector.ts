@@ -94,7 +94,7 @@ export class ExchangeConnector {
  * 
  * const connector = new ExchangeConnector({
  *   exchange: 'binance',
- *   symbol: 'BTCUSDT',
+ *   symbol: 'BTCUSD',
  *   apiKey: 'your-api-key',
  *   apiSecret: 'your-api-secret'
  * });

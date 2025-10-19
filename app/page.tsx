@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from 'react';
 import FootprintChartSimple from '@/components/FootprintChartSimple';
 import FootprintBarStatistics from '@/components/FootprintBarStatistics';
 import TimeframeSelector from '@/components/TimeframeSelector';
-import ChartControls from '@/components/ChartControls';
 import { MockDataGenerator } from '@/lib/mockDataGenerator';
 import { BybitConnector } from '@/lib/bybitConnector';
 import { OrderFlowCandle, Timeframe } from '@/lib/types';
@@ -18,7 +17,8 @@ export default function Home() {
   const [visibleRange, setVisibleRange] = useState({ 
     startIndex: 0, 
     endIndex: 100, // Initialize with full data range
-    candleWidth: 80 
+    candleWidth: 80,
+    leftOffsetPx: 0
   });
   const [barsToShow, setBarsToShow] = useState(15); // Default: show 15 bars for wider candles
 
@@ -40,10 +40,15 @@ export default function Home() {
       try {
         if (isLiveData) {
           // Initialize Bybit connector
-          bybitConnector.current = new BybitConnector('BTCUSDT');
+          console.log('🚀 Initializing Bybit connector for BTCUSD');
+          bybitConnector.current = new BybitConnector('BTCUSD');
           
           // Fetch historical data
+          console.log('📡 Fetching historical data for timeframe:', timeframe);
           const historicalData = await bybitConnector.current.fetchHistoricalData(timeframe, 100);
+          console.log('✅ Received historical data:', historicalData.length, 'candles');
+          console.log('📊 Sample candle:', historicalData[0]);
+          
           setData(historicalData);
           setIsLoading(false);
           setConnectionStatus('connected');
@@ -54,12 +59,15 @@ export default function Home() {
             (updatedCandle) => {
               setData(prevData => {
                 const newData = [...prevData];
-                const lastCandle = newData[newData.length - 1];
                 
-                // Check if this is an update to the last candle or a new candle
-                if (lastCandle && lastCandle.timestamp === updatedCandle.timestamp) {
-                  newData[newData.length - 1] = updatedCandle;
+                // Find if this timestamp already exists
+                const existingIndex = newData.findIndex(c => c.timestamp === updatedCandle.timestamp);
+                
+                if (existingIndex >= 0) {
+                  // Update existing candle
+                  newData[existingIndex] = updatedCandle;
                 } else {
+                  // Add new candle
                   newData.push(updatedCandle);
                   // Keep only last 200 candles
                   if (newData.length > 200) {
@@ -67,7 +75,10 @@ export default function Home() {
                   }
                 }
                 
-                return newData;
+                // Sort by timestamp to ensure order
+                return newData.sort((a, b) => 
+                  new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+                );
               });
             },
             historicalData[historicalData.length - 1]
@@ -80,10 +91,11 @@ export default function Home() {
           setConnectionStatus('connected');
         }
       } catch (error) {
-        console.error('Error loading data:', error);
+        console.error('❌ Error loading data:', error);
         setConnectionStatus('error');
         
         // Fall back to mock data on error
+        console.log('⚠️ Falling back to mock data');
         const historicalData = mockDataGenerator.generateHistoricalData(timeframe, 100);
         setData(historicalData);
         setIsLoading(false);
@@ -111,7 +123,7 @@ export default function Home() {
     const updateDimensions = () => {
       if (typeof window !== 'undefined') {
         // Calculate available height: viewport - padding - header
-        const headerHeight = 140; // Approximate header height
+        const headerHeight = 50; // Compact header height
         const padding = 40; // Top and bottom padding
         const availableHeight = window.innerHeight - headerHeight - padding;
         
@@ -134,52 +146,14 @@ export default function Home() {
   return (
     <div className="h-screen bg-gray-950 text-white p-5 flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-3xl font-bold mb-1">Order Flow Platform</h1>
-            <p className="text-gray-400 text-sm">
-              Real-time footprint charts with bid/ask imbalance analysis
-            </p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <div className="text-xs text-gray-500">Market</div>
-              <div className="text-sm font-mono">BTC/USDT</div>
-            </div>
-            <div className="text-right">
-              <div className="text-xs text-gray-500">Source</div>
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${
-                  connectionStatus === 'connected' ? 'bg-green-500' :
-                  connectionStatus === 'connecting' ? 'bg-yellow-500 animate-pulse' :
-                  'bg-red-500'
-                }`}></div>
-                <div className="text-sm font-mono">{isLiveData ? 'Bybit Live' : 'Mock'}</div>
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-xs text-gray-500">Bars</div>
-              <div className="text-sm font-mono">{data.length}</div>
-            </div>
-          </div>
-        </div>
-        
-        {/* Controls */}
+      <header className="mb-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <TimeframeSelector selected={timeframe} onChange={setTimeframe} />
-            <ChartControls
-              barsToShow={barsToShow}
-              maxBars={data.length}
-              onZoomIn={() => setBarsToShow(prev => Math.max(10, prev - 5))}
-              onZoomOut={() => setBarsToShow(prev => Math.min(data.length, prev + 5))}
-              onReset={() => setBarsToShow(15)}
-            />
             <button
               onClick={() => setIsLiveData(!isLiveData)}
               className={`
-                px-4 py-2 rounded-md text-sm font-medium transition-all
+                px-3 py-1.5 rounded-md text-xs font-medium transition-all
                 ${isLiveData
                   ? 'bg-green-600 text-white hover:bg-green-700'
                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -190,17 +164,35 @@ export default function Home() {
             </button>
           </div>
           
-          <div className="flex items-center gap-6 text-xs">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-green-500 rounded"></div>
-              <span className="text-gray-400">Bid Imbalance (3x+)</span>
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <div className="text-xs text-gray-500">Market</div>
+              <div className="text-xs font-mono">BTC/USD Perp</div>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-red-500 rounded"></div>
-              <span className="text-gray-400">Ask Imbalance (3x+)</span>
+            <div className="text-right">
+              <div className="text-xs text-gray-500">Source</div>
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${
+                  connectionStatus === 'connected' ? 'bg-green-500' :
+                  connectionStatus === 'connecting' ? 'bg-yellow-500 animate-pulse' :
+                  'bg-red-500'
+                }`}></div>
+                <div className="text-xs font-mono">{isLiveData ? 'Bybit Live' : 'Mock'}</div>
+              </div>
             </div>
-            <div className="text-gray-500">
-              Scroll to zoom • Drag to pan
+            <div className="text-right">
+              <div className="text-xs text-gray-500">Bars</div>
+              <div className="text-xs font-mono">{data.length}</div>
+            </div>
+            <div className="flex items-center gap-4 text-xs">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-500 rounded"></div>
+                <span className="text-gray-400">Bid</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-red-500 rounded"></div>
+                <span className="text-gray-400">Ask</span>
+              </div>
             </div>
           </div>
         </div>
@@ -225,8 +217,8 @@ export default function Home() {
                 height={chartHeight}
                 barsToShow={barsToShow}
                 onBarsToShowChange={setBarsToShow}
-                onVisibleRangeChange={(start, end, candleW) => 
-                  setVisibleRange({ startIndex: start, endIndex: end, candleWidth: candleW })
+                onVisibleRangeChange={(start, end, candleW, leftPx) => 
+                  setVisibleRange({ startIndex: start, endIndex: end, candleWidth: candleW, leftOffsetPx: leftPx })
                 }
               />
             </div>
@@ -240,6 +232,7 @@ export default function Home() {
                 visibleStartIndex={visibleRange.startIndex}
                 visibleEndIndex={visibleRange.endIndex}
                 candleWidth={visibleRange.candleWidth}
+                leftOffsetPx={visibleRange.leftOffsetPx}
               />
             </div>
           </>

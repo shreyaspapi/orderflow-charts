@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { OrderFlowCandle } from '@/lib/types';
+import { formatVolume } from '@/lib/utils';
 
 interface FootprintBarStatisticsProps {
   data: OrderFlowCandle[];
@@ -10,6 +11,7 @@ interface FootprintBarStatisticsProps {
   visibleStartIndex?: number;
   visibleEndIndex?: number;
   candleWidth?: number;
+  leftOffsetPx?: number;
 }
 
 export default function FootprintBarStatistics({
@@ -19,6 +21,7 @@ export default function FootprintBarStatistics({
   visibleStartIndex = 0,
   visibleEndIndex,
   candleWidth = 0,
+  leftOffsetPx = 0,
 }: FootprintBarStatisticsProps) {
   console.log('FootprintBarStatistics render:', { 
     dataLength: data.length, 
@@ -41,7 +44,17 @@ export default function FootprintBarStatistics({
   
   // Calculate cell width based on candle width from chart
   const cellWidth = candleWidth > 0 ? candleWidth : Math.max(width / visibleData.length, 60);
-  const padding = { left: 10, right: 80 };
+
+  // Shift the table 3 candles to the left to align with chart
+  const gridLeftOffset = leftOffsetPx - (cellWidth * 2);
+  
+  console.log('📊 Table alignment:', { 
+    leftOffsetPx,
+    cellWidth, 
+    gridLeftOffset,
+    shift: cellWidth * 3,
+    visibleDataLength: visibleData.length 
+  });
 
   // Get color based on value
   const getColorForDelta = (value: number): string => {
@@ -64,14 +77,6 @@ export default function FootprintBarStatistics({
     return 'rgba(100, 100, 100, 0.3)';
   };
 
-  // Format numbers
-  const formatNumber = (num: number): string => {
-    if (Math.abs(num) > 999) {
-      return `${(num / 1000).toFixed(1)}k`;
-    }
-    return num.toLocaleString();
-  };
-
   if (visibleData.length === 0) {
     console.log('No visible data to display');
     return (
@@ -89,51 +94,75 @@ export default function FootprintBarStatistics({
       className="overflow-hidden bg-gray-900 border-t border-gray-700"
       style={{ width, height }}
     >
-      <div className="flex flex-col h-full">
+      <div className="flex h-full">
         {/* Metric Labels Column */}
-        <div className="flex">
-          <div className="w-24 flex-shrink-0 bg-gray-800 border-r border-gray-700">
-            <div className="flex flex-col h-full text-xs font-semibold text-gray-400">
-              <div className="flex items-center px-3 border-b border-gray-700" style={{ height: height / 4 }}>
-                Volume
-              </div>
-              <div className="flex items-center px-3 border-b border-gray-700" style={{ height: height / 4 }}>
-                Delta
-              </div>
-              <div className="flex items-center px-3 border-b border-gray-700" style={{ height: height / 4 }}>
-                Rel. Strength
-              </div>
-              <div className="flex items-center px-3" style={{ height: height / 4 }}>
-                CVD
-              </div>
+        <div className="w-24 flex-shrink-0 bg-gray-800 border-r border-gray-700">
+          <div className="flex flex-col h-full text-xs font-semibold text-gray-400">
+            <div className="flex items-center justify-center border-b border-gray-700" style={{ height: 24 }}>
+              Time
+            </div>
+            <div className="flex items-center px-3 border-b border-gray-700" style={{ height: (height - 24) / 4 }}>
+              Volume
+            </div>
+            <div className="flex items-center px-3 border-b border-gray-700" style={{ height: (height - 24) / 4 }}>
+              Delta
+            </div>
+            <div className="flex items-center px-3 border-b border-gray-700" style={{ height: (height - 24) / 4 }}>
+              Rel. Strength
+            </div>
+            <div className="flex items-center px-3" style={{ height: (height - 24) / 4 }}>
+              CVD
             </div>
           </div>
+        </div>
 
-          {/* Data Grid */}
-          <div className="flex-1 overflow-x-auto">
-            <div className="flex" style={{ marginLeft: padding.left }}>
+        {/* Data Grid with Time Row */}
+        <div className="flex-1 overflow-x-hidden">
+          <div style={{ marginLeft: gridLeftOffset }}>
+            {/* Time Row */}
+            <div className="flex border-b border-gray-700" style={{ height: 24 }}>
+              {visibleData.map((candle, index) => (
+                <div 
+                  key={`time-${startIdx + index}`} 
+                  className="flex-shrink-0 text-[10px] text-gray-400 font-mono flex items-center justify-center"
+                  style={{ width: cellWidth }}
+                >
+                  {new Date(candle.timestamp).toLocaleTimeString('en-US', { 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    hour12: false,
+                    timeZone: 'UTC'
+                  })}
+                </div>
+              ))}
+            </div>
+
+            {/* Data Rows */}
+            <div className="flex">
               {visibleData.map((candle, index) => {
                 const relativeStrength = candle.volume > 0 
                   ? (candle.delta / candle.volume) * 100 
                   : 0;
 
+                const rowHeight = (height - 24) / 4;
+                
                 return (
                   <div 
                     key={startIdx + index}
-                    className="flex-shrink-0 border-r border-gray-700"
-                    style={{ width: cellWidth - 4 }}
+                    className="flex-shrink-0"
+                    style={{ width: cellWidth }}
                   >
                     <div className="flex flex-col text-xs">
                       {/* Volume */}
                       <div 
                         className="flex items-center justify-center border-b border-gray-700 px-1"
                         style={{ 
-                          height: height / 4,
+                          height: rowHeight,
                           backgroundColor: 'rgba(59, 130, 246, 0.2)' 
                         }}
                       >
                         <span className="text-blue-300 font-mono text-[10px]">
-                          {formatNumber(candle.volume)}
+                          {formatVolume(candle.volume)}
                         </span>
                       </div>
 
@@ -141,7 +170,7 @@ export default function FootprintBarStatistics({
                       <div 
                         className="flex items-center justify-center border-b border-gray-700 px-1"
                         style={{ 
-                          height: height / 4,
+                          height: rowHeight,
                           backgroundColor: getColorForDelta(candle.delta) 
                         }}
                       >
@@ -154,7 +183,7 @@ export default function FootprintBarStatistics({
                               : 'text-gray-400'
                           }`}
                         >
-                          {candle.delta > 0 ? '+' : ''}{formatNumber(candle.delta)}
+                          {candle.delta > 0 ? '+' : ''}{formatVolume(candle.delta)}
                         </span>
                       </div>
 
@@ -162,7 +191,7 @@ export default function FootprintBarStatistics({
                       <div 
                         className="flex items-center justify-center border-b border-gray-700 px-1"
                         style={{ 
-                          height: height / 4,
+                          height: rowHeight,
                           backgroundColor: getColorForRS(relativeStrength) 
                         }}
                       >
@@ -183,7 +212,7 @@ export default function FootprintBarStatistics({
                       <div 
                         className="flex items-center justify-center px-1"
                         style={{ 
-                          height: height / 4,
+                          height: rowHeight,
                           backgroundColor: getColorForDelta(candle.cvd || 0) 
                         }}
                       >
@@ -196,7 +225,7 @@ export default function FootprintBarStatistics({
                               : 'text-gray-400'
                           }`}
                         >
-                          {formatNumber(candle.cvd || 0)}
+                          {formatVolume(candle.cvd || 0)}
                         </span>
                       </div>
                     </div>

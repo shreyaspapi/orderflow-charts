@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { OrderFlowCandle } from '@/lib/types';
+import { formatVolume } from '@/lib/utils';
 
 interface FootprintChartSimpleProps {
   data: OrderFlowCandle[];
@@ -9,7 +10,12 @@ interface FootprintChartSimpleProps {
   height: number;
   barsToShow?: number;
   onBarsToShowChange?: (bars: number) => void;
-  onVisibleRangeChange?: (startIndex: number, endIndex: number, candleWidth: number) => void;
+  onVisibleRangeChange?: (
+    startIndex: number,
+    endIndex: number,
+    candleWidth: number,
+    leftOffsetPx: number
+  ) => void;
 }
 
 export default function FootprintChartSimple({
@@ -22,6 +28,7 @@ export default function FootprintChartSimple({
 }: FootprintChartSimpleProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartInstanceRef = useRef<any>(null);
+  const [isChartReady, setIsChartReady] = useState(false);
 
   // Create chart only once on mount
   useEffect(() => {
@@ -71,14 +78,14 @@ export default function FootprintChartSimple({
 
         // Add candlestick series (v5 API uses addSeries with series type)
         const candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
-          upColor: '#22c55e',
-          downColor: '#ef4444',
+          upColor: 'rgba(34, 197, 94, 0.2)',  // Semi-transparent green
+          downColor: 'rgba(239, 68, 68, 0.2)', // Semi-transparent red
           borderVisible: true,
-          borderUpColor: '#22c55e',
-          borderDownColor: '#ef4444',
+          borderUpColor: 'rgba(34, 197, 94, 0.4)',
+          borderDownColor: 'rgba(239, 68, 68, 0.4)',
           wickVisible: true,
-          wickUpColor: '#22c55e',
-          wickDownColor: '#ef4444',
+          wickUpColor: 'rgba(34, 197, 94, 0.3)',
+          wickDownColor: 'rgba(239, 68, 68, 0.3)',
         });
 
         // Store everything first (we need this ref for the overlay)
@@ -94,6 +101,11 @@ export default function FootprintChartSimple({
         // Add cleanup function to the ref
         chartInstanceRef.current.overlayCleanup = overlayCleanup;
 
+        console.log('✅ Chart instance stored in ref, ready for data');
+        
+        // Notify that chart is ready
+        setIsChartReady(true);
+
       } catch (error) {
         console.error('Error loading chart:', error);
       }
@@ -104,6 +116,7 @@ export default function FootprintChartSimple({
     // Cleanup function
     return () => {
       isMounted = false;
+      setIsChartReady(false);
       
       if (chartInstanceRef.current) {
         // Clean up overlay first
@@ -123,20 +136,38 @@ export default function FootprintChartSimple({
 
   // Update chart data when data changes (without recreating chart)
   useEffect(() => {
-    if (!chartInstanceRef.current?.candleSeries || !data.length) return;
+    if (!data.length) {
+      console.log('⚠️ No data to display');
+      return;
+    }
+
+    if (!chartInstanceRef.current?.candleSeries) {
+      console.log('⚠️ Chart not ready yet, will update when chart is created. Data ready:', data.length, 'candles');
+      return;
+    }
 
     console.log('📊 Updating chart data:', data.length, 'candles');
+    console.log('📊 First candle data:', data[0]);
 
-    // Convert data to chart format (ensure ascending order by time)
-    const chartData = data
-      .map(candle => ({
-        time: Math.floor(new Date(candle.timestamp).getTime() / 1000) as any,
+    // Convert data to chart format and remove duplicates
+    const timeMap = new Map();
+    
+    // Process candles and keep only the latest data for each timestamp
+    data.forEach(candle => {
+      const time = Math.floor(new Date(candle.timestamp).getTime() / 1000);
+      timeMap.set(time, {
+        time: time as any,
         open: candle.open,
         high: candle.high,
         low: candle.low,
         close: candle.close,
-      }))
-      .sort((a, b) => a.time - b.time); // Sort by time in ascending order
+      });
+    });
+
+    // Convert map to array and sort by time (ascending order)
+    const chartData = Array.from(timeMap.values()).sort((a, b) => a.time - b.time);
+
+    console.log('📊 Unique candles after deduplication:', chartData.length);
 
     // Update the series data without recreating the chart
     chartInstanceRef.current.candleSeries.setData(chartData);
@@ -152,7 +183,7 @@ export default function FootprintChartSimple({
     } else {
       console.log('🔄 Data updated, overlay will refresh on next draw');
     }
-  }, [data]);
+  }, [data, isChartReady]); // Also trigger when chart becomes ready
 
   // Handle resize separately without recreating the chart
   useEffect(() => {
@@ -234,7 +265,7 @@ function createFootprintOverlay(
     if (!visibleRange) return;
 
     // Find visible candles
-    const visibleCandles = data.filter(candle => {
+    const visibleCandles = data.filter((candle: OrderFlowCandle) => {
       const time = Math.floor(new Date(candle.timestamp).getTime() / 1000);
       return time >= visibleRange.from && time <= visibleRange.to;
     });
@@ -248,31 +279,56 @@ function createFootprintOverlay(
     if (!visibleLogicalRange) return;
 
     const barsInView = visibleLogicalRange.to - visibleLogicalRange.from;
-    const candleWidth = chartContainer.getBoundingClientRect().width / barsInView;
     
-    console.log('📊 Bars in view:', barsInView, 'Candle width:', candleWidth.toFixed(1), 'px', 'Visible candles:', visibleCandles.length);
+    // Get the actual time scale width (excludes price scale on right)
+    const timeScaleWidth = timeScale.width();
+    const candleWidth = timeScaleWidth / barsInView;
+    
+    console.log('📊 Bars in view:', barsInView, 'Time scale width:', timeScaleWidth, 'Candle width:', candleWidth.toFixed(1), 'px', 'Visible candles:', visibleCandles.length);
 
     // Notify parent of visible range for statistics panel sync
-    if (onVisibleRangeChange) {
-      const startIndex = Math.max(0, Math.floor(visibleLogicalRange.from));
-      const endIndex = Math.min(data.length, Math.ceil(visibleLogicalRange.to));
-      onVisibleRangeChange(startIndex, endIndex, candleWidth);
+    if (onVisibleRangeChange && visibleCandles.length > 0) {
+      // Find the actual indices of the first and last visible candles
+      const firstVisibleTime = Math.floor(new Date(visibleCandles[0].timestamp).getTime() / 1000);
+      const lastVisibleTime = Math.floor(new Date(visibleCandles[visibleCandles.length - 1].timestamp).getTime() / 1000);
+      
+      const startIndex = data.findIndex((c: OrderFlowCandle) => Math.floor(new Date(c.timestamp).getTime() / 1000) === firstVisibleTime);
+      const endIndex = data.findIndex((c: OrderFlowCandle) => Math.floor(new Date(c.timestamp).getTime() / 1000) === lastVisibleTime);
+      
+      if (startIndex >= 0 && endIndex >= 0) {
+        // For now, use 0 offset and just ensure the table shows the same candles
+        // The table will render all visible candles starting from the left
+        const leftOffsetPx = 0;
+        
+        console.log('🎯 Chart visible range:', {
+          visibleCandlesCount: visibleCandles.length,
+          startIndex,
+          endIndex,
+          candleWidth,
+          leftOffsetPx,
+          firstTime: new Date(visibleCandles[0].timestamp).toLocaleTimeString(),
+          lastTime: new Date(visibleCandles[visibleCandles.length - 1].timestamp).toLocaleTimeString()
+        });
+        
+        onVisibleRangeChange(startIndex, endIndex + 1, candleWidth, leftOffsetPx);
+      }
     }
 
     // Draw footprint for each visible candle
     let candlesWithFootprint = 0;
-    visibleCandles.forEach((candle, idx) => {
+    visibleCandles.forEach((candle: OrderFlowCandle, idx: number) => {
       const time = Math.floor(new Date(candle.timestamp).getTime() / 1000);
       const x = timeScale.timeToCoordinate(time);
 
       if (!x) return;
 
-      const bodyTop = candleSeries.priceToCoordinate(Math.max(candle.open, candle.close));
-      const bodyBottom = candleSeries.priceToCoordinate(Math.min(candle.open, candle.close));
+      // Use the full candle range (high to low), not just the body
+      const candleTop = candleSeries.priceToCoordinate(candle.high);
+      const candleBottom = candleSeries.priceToCoordinate(candle.low);
 
-      if (!bodyTop || !bodyBottom) return;
+      if (!candleTop || !candleBottom) return;
 
-      const bodyHeight = Math.abs(bodyBottom - bodyTop);
+      const fullCandleHeight = Math.abs(candleBottom - candleTop);
 
       // Only draw footprint if candle is wide enough
       if (candleWidth < 15) {
@@ -287,19 +343,20 @@ function createFootprintOverlay(
 
       candlesWithFootprint++;
       if (candlesWithFootprint === 1) {
-        console.log('✅ Drawing footprint! Candle width:', candleWidth.toFixed(1), 'px, height:', bodyHeight.toFixed(1), 'px');
+        console.log('✅ Drawing footprint! Candle width:', candleWidth.toFixed(1), 'px, full height:', fullCandleHeight.toFixed(1), 'px');
       }
 
       // Calculate font size based on candle width (more flexible for smaller candles)
       const fontSize = Math.min(Math.max(candleWidth * 0.15, 7), 14);
       const rowHeight = Math.max(fontSize + 4, 10);
 
-      // Filter and sample price levels
+      // Filter and sample price levels across the full candle range
       const sortedLevels = [...candle.bidAskData]
         .filter(level => level.price >= candle.low && level.price <= candle.high)
         .sort((a, b) => b.price - a.price);
 
-      const maxLevels = Math.floor(bodyHeight / rowHeight);
+      // Calculate how many levels can fit in the full candle height
+      const maxLevels = Math.floor(fullCandleHeight / rowHeight);
       const levelsToShow = sortedLevels.length > maxLevels
         ? sortedLevels.filter((_, i) => i % Math.ceil(sortedLevels.length / maxLevels) === 0)
         : sortedLevels;
@@ -311,8 +368,8 @@ function createFootprintOverlay(
         const y = candleSeries.priceToCoordinate(level.price);
         if (!y) return;
 
-        // Skip if outside body
-        if (y < (bodyTop - 5) || y > (bodyBottom + 5)) return;
+        // Skip if outside the full candle range (with small buffer)
+        if (y < (candleTop - 5) || y > (candleBottom + 5)) return;
 
         const imbalance = isImbalance(level.bidVol, level.askVol);
 
@@ -321,24 +378,24 @@ function createFootprintOverlay(
         ctx.font = `${fontSize}px monospace`;
 
         if (imbalance === 'bid') {
-          ctx.fillStyle = 'rgba(34, 197, 94, 0.7)';
+          ctx.fillStyle = 'rgba(34, 197, 94, 0.8)';
           ctx.fillRect(x - candleWidth * 0.4, y - rowHeight / 2, candleWidth * 0.38, rowHeight);
         }
 
-        ctx.fillStyle = imbalance === 'bid' ? '#000' : 'rgba(34, 197, 94, 0.9)';
-        const bidText = level.bidVol > 999 ? `${(level.bidVol / 1000).toFixed(1)}k` : level.bidVol.toFixed(0);
+        ctx.fillStyle = imbalance === 'bid' ? '#000' : 'rgba(34, 197, 94, 1)';
+        const bidText = formatVolume(level.bidVol);
         ctx.fillText(bidText, x - candleWidth * 0.02, y + fontSize / 3);
 
         // Draw ask volume (right side)
         ctx.textAlign = 'left';
 
         if (imbalance === 'ask') {
-          ctx.fillStyle = 'rgba(239, 68, 68, 0.7)';
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.8)';
           ctx.fillRect(x + candleWidth * 0.02, y - rowHeight / 2, candleWidth * 0.38, rowHeight);
         }
 
-        ctx.fillStyle = imbalance === 'ask' ? '#000' : 'rgba(239, 68, 68, 0.9)';
-        const askText = level.askVol > 999 ? `${(level.askVol / 1000).toFixed(1)}k` : level.askVol.toFixed(0);
+        ctx.fillStyle = imbalance === 'ask' ? '#000' : 'rgba(239, 68, 68, 1)';
+        const askText = formatVolume(level.askVol);
         ctx.fillText(askText, x + candleWidth * 0.02, y + fontSize / 3);
 
         // Draw separator line

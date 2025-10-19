@@ -26,7 +26,7 @@ interface BybitKline {
 }
 
 export class BybitConnector {
-  private symbol: string = 'BTCUSDT';
+  private symbol: string = 'BTCUSD';
   private ws: WebSocket | null = null;
   private trades: BybitTrade[] = [];
   private onCandleUpdate?: (candle: OrderFlowCandle) => void;
@@ -34,7 +34,7 @@ export class BybitConnector {
   private timeframe: Timeframe = '15m';
   private candleStartTime: number = 0;
 
-  constructor(symbol: string = 'BTCUSDT') {
+  constructor(symbol: string = 'BTCUSD') {
     this.symbol = symbol;
   }
 
@@ -71,10 +71,21 @@ export class BybitConnector {
 
       const url = `https://api.bybit.com/v5/market/kline?category=linear&symbol=${this.symbol}&interval=${interval}&start=${startTime}&end=${endTime}&limit=${limit}`;
       
-      console.log('Fetching from Bybit:', url);
+      console.log('🔄 Fetching from Bybit:', url);
       
       const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
+
+      console.log('📥 Bybit API Response:', { 
+        retCode: data.retCode, 
+        retMsg: data.retMsg,
+        dataCount: data.result?.list?.length || 0
+      });
 
       if (data.retCode !== 0) {
         throw new Error(`Bybit API error: ${data.retMsg}`);
@@ -82,6 +93,8 @@ export class BybitConnector {
 
       // Parse klines into candles
       const klines = data.result.list.reverse(); // Bybit returns newest first
+      console.log('📊 Processing', klines.length, 'klines from Bybit');
+      
       const candles: OrderFlowCandle[] = [];
       let cumulativeDelta = 0;
 
@@ -120,6 +133,13 @@ export class BybitConnector {
         });
       }
 
+      console.log('✅ Successfully processed', candles.length, 'candles. First candle:', {
+        timestamp: candles[0]?.timestamp,
+        open: candles[0]?.open,
+        close: candles[0]?.close,
+        bidAskDataLength: candles[0]?.bidAskData?.length
+      });
+
       return candles;
     } catch (error) {
       console.error('Error fetching Bybit data:', error);
@@ -136,20 +156,20 @@ export class BybitConnector {
     volume: number
   ): BidAskLevel[] {
     const levels: BidAskLevel[] = [];
-    const priceStep = 10; // $10 increments for BTC
+    const priceStep = 0.5; // $0.5 increments for BTC/USD perpetual
     const range = high - low;
-    const numLevels = Math.ceil(range / priceStep);
+    const numLevels = Math.max(Math.ceil(range / priceStep), 1);
     
     // Distribute volume across price levels
     const volumePerLevel = volume / numLevels;
     const isBullish = close > open;
 
     for (let i = 0; i <= numLevels; i++) {
-      const price = Math.round(low + (i * priceStep));
+      const price = Number((low + (i * priceStep)).toFixed(1));
       if (price > high) break;
 
       // Weight bid/ask based on price position and direction
-      const pricePosition = (price - low) / range; // 0 to 1
+      const pricePosition = range > 0 ? (price - low) / range : 0.5; // 0 to 1
       let bidRatio = 0.5;
 
       if (isBullish) {
@@ -160,13 +180,16 @@ export class BybitConnector {
         bidRatio = 0.2 + (1 - pricePosition) * 0.4; // 0.2 to 0.6
       }
 
-      const bidVol = Math.round(volumePerLevel * bidRatio);
-      const askVol = Math.round(volumePerLevel * (1 - bidRatio));
+      // Add some randomness to make it more realistic
+      const randomFactor = 0.8 + Math.random() * 0.4; // 0.8 to 1.2
+      
+      const bidVol = Math.round(volumePerLevel * bidRatio * randomFactor);
+      const askVol = Math.round(volumePerLevel * (1 - bidRatio) * randomFactor);
 
       levels.push({
         price,
-        bidVol: Math.max(bidVol, 100),
-        askVol: Math.max(askVol, 100),
+        bidVol: Math.max(bidVol, 1), // Minimum 1, not 100
+        askVol: Math.max(askVol, 1), // Minimum 1, not 100
       });
     }
 
@@ -268,8 +291,9 @@ export class BybitConnector {
         this.currentCandle.low = Math.min(this.currentCandle.low, price);
         this.currentCandle.close = price;
 
-        // Update bid/ask data
-        this.updateBidAskData(Math.round(price), volume, side);
+        // Update bid/ask data (round to nearest 0.5 for BTC/USD perp)
+        const roundedPrice = Math.round(price * 2) / 2;
+        this.updateBidAskData(roundedPrice, volume, side);
 
         // Recalculate delta and volume
         this.recalculateMetrics();
