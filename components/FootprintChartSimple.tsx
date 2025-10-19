@@ -112,14 +112,14 @@ export default function FootprintChartSimple({
 
         // Add candlestick series (v5 API uses addSeries with series type)
         const candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
-          upColor: 'rgba(34, 197, 94, 0.2)',  // Semi-transparent green
-          downColor: 'rgba(239, 68, 68, 0.2)', // Semi-transparent red
+          upColor: 'rgba(34, 197, 94, 0.6)',  // More opaque green
+          downColor: 'rgba(239, 68, 68, 0.6)', // More opaque red
           borderVisible: true,
-          borderUpColor: 'rgba(34, 197, 94, 0.4)',
-          borderDownColor: 'rgba(239, 68, 68, 0.4)',
+          borderUpColor: 'rgba(34, 197, 94, 0.9)',
+          borderDownColor: 'rgba(239, 68, 68, 0.9)',
           wickVisible: true,
-          wickUpColor: 'rgba(34, 197, 94, 0.3)',
-          wickDownColor: 'rgba(239, 68, 68, 0.3)',
+          wickUpColor: 'rgba(34, 197, 94, 0.8)',
+          wickDownColor: 'rgba(239, 68, 68, 0.8)',
         });
 
         // Store everything first (we need this ref for the overlay)
