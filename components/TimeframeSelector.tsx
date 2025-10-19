@@ -12,15 +12,15 @@ const timeframes: Timeframe[] = ['5m', '15m', '30m', '1h', '4h'];
 
 export default function TimeframeSelector({ selected, onChange }: TimeframeSelectorProps) {
   return (
-    <div className="flex gap-1 bg-gray-800 p-1 rounded-md border border-gray-700">
+    <div className="flex gap-2 bg-gray-800 p-2 rounded-lg border border-gray-700">
       {timeframes.map((tf) => (
         <button
           key={tf}
           onClick={() => onChange(tf)}
           className={`
-            px-3 py-1.5 rounded text-xs font-medium transition-all
+            px-4 py-2 rounded-md text-sm font-medium transition-all
             ${selected === tf
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30'
+              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/50'
               : 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white'
             }
           `}
