@@ -21,12 +21,13 @@ export default function Home() {
     leftOffsetPx: 0
   });
   const [barsToShow, setBarsToShow] = useState(15); // Default: show 15 bars for wider candles
+  const [barsToLoad, setBarsToLoad] = useState(100); // Number of bars to load from API
 
   // Initialize data sources
   const mockDataGenerator = new MockDataGenerator();
   const bybitConnector = useRef<BybitConnector | null>(null);
 
-  // Load data when timeframe changes or data source toggles
+  // Load data when timeframe changes, data source toggles, or barsToLoad changes
   useEffect(() => {
     setIsLoading(true);
     setConnectionStatus('connecting');
@@ -44,8 +45,8 @@ export default function Home() {
           bybitConnector.current = new BybitConnector('BTCUSD');
           
           // Fetch historical data
-          console.log('📡 Fetching historical data for timeframe:', timeframe);
-          const historicalData = await bybitConnector.current.fetchHistoricalData(timeframe, 100);
+          console.log('📡 Fetching historical data for timeframe:', timeframe, 'bars:', barsToLoad);
+          const historicalData = await bybitConnector.current.fetchHistoricalData(timeframe, barsToLoad);
           console.log('✅ Received historical data:', historicalData.length, 'candles');
           console.log('📊 Sample candle:', historicalData[0]);
           
@@ -85,7 +86,7 @@ export default function Home() {
           );
         } else {
           // Use mock data
-          const historicalData = mockDataGenerator.generateHistoricalData(timeframe, 100);
+          const historicalData = mockDataGenerator.generateHistoricalData(timeframe, barsToLoad);
           setData(historicalData);
           setIsLoading(false);
           setConnectionStatus('connected');
@@ -96,7 +97,7 @@ export default function Home() {
         
         // Fall back to mock data on error
         console.log('⚠️ Falling back to mock data');
-        const historicalData = mockDataGenerator.generateHistoricalData(timeframe, 100);
+        const historicalData = mockDataGenerator.generateHistoricalData(timeframe, barsToLoad);
         setData(historicalData);
         setIsLoading(false);
       }
@@ -110,7 +111,7 @@ export default function Home() {
         bybitConnector.current.disconnect();
       }
     };
-  }, [timeframe, isLiveData]);
+  }, [timeframe, isLiveData, barsToLoad]);
 
   // Chart dimensions - dynamically calculate based on viewport
   const [dimensions, setDimensions] = useState({
@@ -150,6 +151,47 @@ export default function Home() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <TimeframeSelector selected={timeframe} onChange={setTimeframe} />
+            
+            {/* Zoom Controls */}
+            <div className="flex items-center gap-1 bg-gray-800 p-1 rounded-md border border-gray-700">
+              <button
+                onClick={() => setBarsToShow(prev => Math.max(10, prev - 10))}
+                className="px-2 py-1 rounded text-xs font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white transition-all"
+                title="Show fewer bars"
+              >
+                −
+              </button>
+              <div className="px-3 py-1 text-xs font-mono text-gray-400">
+                {barsToShow} bars
+              </div>
+              <button
+                onClick={() => setBarsToShow(prev => Math.min(data.length, prev + 10))}
+                className="px-2 py-1 rounded text-xs font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white transition-all"
+                title="Show more bars"
+              >
+                +
+              </button>
+            </div>
+            
+            {/* Load Bars Dropdown */}
+            <div className="flex items-center gap-2 bg-gray-800 p-1 rounded-md border border-gray-700">
+              <label htmlFor="bars-to-load" className="px-2 text-xs text-gray-400">
+                Load:
+              </label>
+              <select
+                id="bars-to-load"
+                value={barsToLoad}
+                onChange={(e) => setBarsToLoad(Number(e.target.value))}
+                className="bg-gray-700 text-gray-300 text-xs rounded px-2 py-1 border-none outline-none hover:bg-gray-600 focus:bg-gray-600 cursor-pointer"
+              >
+                <option value={50}>50 bars</option>
+                <option value={100}>100 bars</option>
+                <option value={200}>200 bars</option>
+                <option value={400}>400 bars</option>
+                <option value={500}>500 bars</option>
+              </select>
+            </div>
+            
             <button
               onClick={() => setIsLiveData(!isLiveData)}
               className={`

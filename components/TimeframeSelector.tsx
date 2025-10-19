@@ -8,7 +8,7 @@ interface TimeframeSelectorProps {
   onChange: (timeframe: Timeframe) => void;
 }
 
-const timeframes: Timeframe[] = ['5m', '15m', '30m', '1h', '4h'];
+const timeframes: Timeframe[] = ['5m', '15m', '30m', '1h', '4h', '12h', '1d', '1w', '1M'];
 
 export default function TimeframeSelector({ selected, onChange }: TimeframeSelectorProps) {
   return (
